@@ -249,6 +249,7 @@ class BoundaryForcings(Forcings):
         super().__init__(context)
         self.variables = variables
         self.variables_mask = variables_mask
+                
         assert isinstance(input, DatasetInput), "Currently only boundary forcings from dataset supported."
         self.input = input
         if "output_mask" in context.checkpoint._supporting_arrays:
@@ -256,7 +257,8 @@ class BoundaryForcings(Forcings):
         else:
             self.spatial_mask = np.array([False] * len(input["latitudes"]), dtype=bool)
         self.kinds = dict(retrieved=True)  # Used for debugging
-
+        
+        
     def __repr__(self) -> str:
         """Return a string representation of the BoundaryForcings object."""
         return f"{self.__class__.__name__}({self.variables})"
@@ -282,7 +284,7 @@ class BoundaryForcings(Forcings):
             dates,
         )
         data = data[..., self.spatial_mask]
-
+        
         expected_shape = (len(self.variables), len(dates), current_state["latitudes"][self.spatial_mask].size)
         assert data.shape == expected_shape, (data.shape, expected_shape)
 

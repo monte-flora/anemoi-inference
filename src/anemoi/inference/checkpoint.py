@@ -108,7 +108,7 @@ class Checkpoint:
             path = json.loads(self._source)
         except Exception:
             path = self._source
-
+             
         if isinstance(path, (Path, str)):
             return str(path)
         elif isinstance(path, dict):

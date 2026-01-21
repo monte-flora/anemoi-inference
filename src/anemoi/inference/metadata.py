@@ -166,7 +166,7 @@ class Metadata(PatchMixin, LegacyMixin):
     ###########################################################################
     # Inference
     ###########################################################################
-
+    
     @cached_property
     def timestep(self) -> datetime.timedelta:
         """Model time stepping timestep."""
@@ -204,7 +204,7 @@ class Metadata(PatchMixin, LegacyMixin):
             self._indices.data.input.full,
             self._indices.model.input.full,
         )
-
+        
         return frozendict({v: mapping[i] for i, v in enumerate(self.variables) if i in mapping})
 
     @cached_property
@@ -214,6 +214,7 @@ class Metadata(PatchMixin, LegacyMixin):
             self._indices.model.output.full,
             self._indices.data.output.full,
         )
+        
         return frozendict({k: self.variables[v] for k, v in mapping.items()})
 
     @cached_property
@@ -1019,7 +1020,7 @@ class Metadata(PatchMixin, LegacyMixin):
         """
         if "output_mask" not in self._supporting_arrays:
             return []
-
+                
         return context.create_boundary_forcings(
             self.prognostic_variables,
             self.prognostic_input_mask,

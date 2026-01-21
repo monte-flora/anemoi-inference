@@ -179,7 +179,8 @@ class Runner(Context):
             The checkpoint object.
         """
         return self._checkpoint
-
+    
+    
     @property
     def device(self) -> "torch.device":
         if self._device is None:
@@ -651,7 +652,7 @@ class Runner(Context):
             with ProfilingLabel("Updating state (CPU)", self.use_profiler):
                 for i in range(output.shape[1]):
                     new_state["fields"][self.checkpoint.output_tensor_index_to_variable[i]] = output[:, i]
-
+                 
             if (s == 0 and self.verbosity > 0) or self.verbosity > 1:
                 self._print_output_tensor("Output tensor", output.cpu().numpy())
 
@@ -683,6 +684,7 @@ class Runner(Context):
                 input_tensor_torch = self.add_dynamic_forcings_to_input_tensor(
                     input_tensor_torch, new_state, next_date, check
                 )
+                
                 input_tensor_torch = self.add_boundary_forcings_to_input_tensor(
                     input_tensor_torch, new_state, next_date, check
                 )
@@ -722,10 +724,10 @@ class Runner(Context):
         """
         # input_tensor_torch is shape: (batch, multi_step_input, values, variables)
         # batch is always 1
-
+  
         prognostic_output_mask = self.checkpoint.prognostic_output_mask
-        prognostic_input_mask = self.checkpoint.prognostic_input_mask
-
+        prognostic_input_mask = self.checkpoint.prognostic_input_mask       
+                    
         # Copy prognostic fields to input tensor
         prognostic_fields = y_pred[..., prognostic_output_mask]  # Get new predicted values
         input_tensor_torch = input_tensor_torch.roll(-1, dims=1)  # Roll the tensor in the multi_step_input dimension
@@ -822,13 +824,15 @@ class Runner(Context):
         # batch is always 1
         sources = self.boundary_forcings_inputs
         for source in sources:
-            forcings = source.load_forcings_array([date], state)  # shape: (variables, dates, values)
-
-            forcings = np.squeeze(forcings, axis=1)  # Drop the dates dimension
-
-            forcings = np.swapaxes(forcings[np.newaxis, np.newaxis, ...], -2, -1)  # shape: (1, 1, values, variables)
+            forcings = source.load_forcings_array([date], state)  # shape: (variables, dates, # of boundary cells)
+            forcings = np.squeeze(forcings, axis=1)  # Drop the dates dimension -> (variables, cell) 
+                 
+            forcings = np.swapaxes(forcings[np.newaxis, np.newaxis, ...], -2, -1)  # shape: (1, 1, cell, variables)
             forcings = torch.from_numpy(forcings).to(self.device)  # Copy to device
+ 
+            # mask shape : (B, T, cell, C); selecting the last time
             total_mask = np.ix_([0], [-1], source.spatial_mask, source.variables_mask)
+                      
             input_tensor_torch[total_mask] = forcings  # Copy forcings to last 'multi_step_input' row
 
         # TO DO: add some consistency checks as above

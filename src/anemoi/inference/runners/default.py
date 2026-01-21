@@ -224,6 +224,8 @@ class DefaultRunner(Runner):
         dict
             The input forcings configuration.
         """
+        LOG.info(f"\n\n{self.config.forcings=}\n\n")
+        
         if self.config.forcings is None:
             # Use the same as the input
             return self.config.input
