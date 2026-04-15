@@ -148,6 +148,7 @@ class ExternalGraphRunner(DefaultRunner):
         update_supporting_arrays: dict[Literal["graph", "file"], dict[str, str]] | None = None,
         updated_number_of_grid_points: str | int | None = None,
         check_state_dict: bool | None = True,
+        inference_field_shape: tuple[int, int] | list[int] | None = None,
     ) -> None:
         """Initialise the ExternalGraphRunner.
 
@@ -176,10 +177,14 @@ class ExternalGraphRunner(DefaultRunner):
             If is an int, will be used as the number of grid points.
         check_state_dict: bool | None
             Boolean specifying if reconstruction of statedict happens as expeceted.
+        inference_field_shape: tuple[int, int] | list[int] | None
+            For DiT models: override field_shape for inference at a different domain size
+            (e.g., [992, 1524] for CONUS when trained on [246, 246]).
         """
         super().__init__(config)
         self.check_state_dict = check_state_dict
         self.graph_path = graph
+        self._inference_field_shape = inference_field_shape
 
         # If graph was build on other dataset, we need to adapt the dataloader
         if graph_dataset is not None:
@@ -264,27 +269,49 @@ class ExternalGraphRunner(DefaultRunner):
         LOG.info("Loading external graph from path %s.", graph_path)
         return torch.load(graph_path, map_location="cpu", weights_only=False)
 
+    def _is_dit_model(self, model_instance):
+        """Check if the loaded model is a DiT (non-graph) model."""
+        inner_model = getattr(model_instance, 'model', None)
+        if inner_model is None:
+            return False
+        from anemoi.models.models.dit_wrapper import AnemoiDiTModel
+        return isinstance(inner_model, AnemoiDiTModel)
+
     @cached_property
     def model(self):
         # load the model from the checkpoint
         device = self.device
         self.device = "cpu"
         model_instance = super().model
-        state_dict_ckpt = deepcopy(model_instance.state_dict())
 
-        # rebuild the model with the new graph
-        model_instance.graph_data = self.graph
-        model_instance.config = self.checkpoint._metadata._config
-        model_instance._build_model()
+        if self._is_dit_model(model_instance):
+            # DiT model: no graph swap needed — update field_shape for new domain size
+            inner_model = model_instance.model
+            if self._inference_field_shape is not None:
+                old_shape = inner_model.field_shape
+                inner_model.field_shape = tuple(self._inference_field_shape)
+                LOG.info(
+                    "DiT model: updated field_shape from %s to %s for inference.",
+                    old_shape, inner_model.field_shape,
+                )
+            else:
+                LOG.info("DiT model: keeping training field_shape %s.", inner_model.field_shape)
+            LOG.info("Successfully loaded DiT model for inference (no graph swap).")
+        else:
+            # Graph-based model: rebuild with external graph
+            state_dict_ckpt = deepcopy(model_instance.state_dict())
+            model_instance.graph_data = self.graph
+            model_instance.config = self.checkpoint._metadata._config
+            model_instance._build_model()
 
-        # reinstate the weights, biases and normalizer from the checkpoint
-        # reinstating the normalizer is necessary for checkpoints that were created
-        # using transfer learning, where the statistics as stored in the checkpoint
-        # do not match the statistics used to build the normalizer in the checkpoint.
-        model_instance = update_state_dict(
-            model_instance, state_dict_ckpt, keywords=["bias", "weight", "processors.normalizer"]
-        )
+            # reinstate the weights, biases and normalizer from the checkpoint
+            # reinstating the normalizer is necessary for checkpoints that were created
+            # using transfer learning, where the statistics as stored in the checkpoint
+            # do not match the statistics used to build the normalizer in the checkpoint.
+            model_instance = update_state_dict(
+                model_instance, state_dict_ckpt, keywords=["bias", "weight", "processors.normalizer"]
+            )
+            LOG.info("Successfully built model with external graph and reassigned model weights!")
 
-        LOG.info("Successfully built model with external graph and reassigned model weights!")
         self.device = device
         return model_instance.to(self.device)
